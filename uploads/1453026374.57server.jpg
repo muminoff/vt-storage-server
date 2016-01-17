@@ -1,0 +1,201 @@
+// main modules
+var express = require('express');
+var app = express();
+var server = require('http').createServer(app);
+var bodyParser = require('body-parser');
+var pg = require('pg').native;
+
+// funktionale programminghe stuffhe
+// ay lob konkyurent kompyuting mazapaka
+var __ = require('lazy.js');
+
+// logger and config
+var logger = require('./logger');
+var config = require('./utils/config');
+
+// set log level from config
+logger.level = config.log_level;
+
+// db pool size
+pg.defaults.poolSize = config.postgresql.pool_size;
+
+// variables
+var pgUsername = config.postgresql.user;
+var pgPassword = config.postgresql.pass;
+var pgHostname = config.postgresql.host;
+var pgPort = config.postgresql.port;
+var pgDBName = config.postgresql.name;
+var pgConnectionString = 
+  'postgres://' + pgUsername + ':' + pgPassword + '@'+ pgHostname + ':' + pgPort.toString() + '/' + pgDBName;
+var host = process.env.HOST || config.host;
+var port = process.env.PORT || config.port;
+var gcm_api_key = process.env.GCM_API_KEY || config.gcm_api_key;
+
+
+// rest api stuff
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+
+// api import
+var getAllTopics = require('./api/alltopics.js');
+var signupUser = require('./api/signup');
+var signinUser = require('./api/signin');
+var userTopics = require('./api/usertopics');
+var roomList = require('./api/roomlist');
+var topicList = require('./api/topiclist');
+var topicMembers = require('./api/topicmembers');
+var topicCreate = require('./api/topiccreate');
+var topicUnsubscribe = require('./api/topicunsubscribe');
+var messageHistory = require('./api/messagehistory');
+
+// rest route
+var router = express.Router();
+
+// signup api
+router.post('/signup', function(req, res) {
+
+  var username = req.body.username;
+  var phone_number = req.body.phone_number;
+  var gcm_token = req.body.gcm_token;
+
+  logger.debug('username', username);
+  logger.debug('phone_number', phone_number);
+  logger.debug('gcm_token', gcm_token);
+
+  if(!username) {
+    return res.json({ status: 'fail', detail: 'username not given' });
+  }
+
+  if(!phone_number) {
+    return res.json({ status: 'fail', detail: 'phone_number not given' });
+  }
+
+  pg.connect(pgConnectionString, function(err, client, done) {
+
+    signupUser(client, username, phone_number, gcm_token, logger, function(resp) {
+      logger.debug('Got response from API', resp);
+      logger.info('User', username, 'signed up');
+      logger.info('Token', resp.token);
+      return res.json(resp);
+    });
+
+  });
+});
+
+// topic members api
+// TODO: check token before proceeding !!!
+router.post('/members', function(req, res) {
+
+  var topic_id = req.body.topic_id;
+
+  logger.debug('topic_id', topic_id);
+
+  if(!topic_id) {
+    return res.json({ status: 'fail', detail: 'topic_id not given' });
+  }
+
+  pg.connect(pgConnectionString, function(err, client, done) {
+
+    topicMembers(client, topic_id, logger, function(resp) {
+      logger.debug('Got response from API', resp);
+      return res.json(resp);
+    });
+
+  });
+});
+
+// room list api
+router.get('/rooms', function(req, res) {
+
+  pg.connect(pgConnectionString, function(err, client, done) {
+
+    roomList(client, logger, function(roomlist){
+      logger.debug('Sending data ' + JSON.stringify(roomlist));
+      return res.json({ status: 'ok', data: roomlist });
+    });
+
+  });
+});
+
+// topic list api
+// TODO: check token before proceeding !!!
+router.post('/rooms/:room_id/topics', function(req, res) {
+
+  var room_id = req.params.room_id;
+  var user_id = req.body.user_id;
+
+  logger.debug('room_id', room_id);
+
+  pg.connect(pgConnectionString, function(err, client, done) {
+
+    // send topic list
+    topicList(client, room_id, user_id, logger, function(topiclist){
+      return res.json({ status: 'ok', data: topiclist });
+    });
+
+  });
+});
+
+// topic create api
+// TODO: check token before proceeding !!!
+router.post('/rooms/:room_id', function(req, res) {
+
+  var owner = req.body.user_id;
+  var title = req.body.title;
+  var body = req.body.body;
+  var parent_room = req.params.room_id;
+  var attrs = req.body.attrs;
+
+  logger.debug('owner', owner);
+  logger.debug('title', title);
+  logger.debug('body', body);
+  logger.debug('parent_room', parent_room);
+  logger.debug('attrs', attrs);
+
+  pg.connect(pgConnectionString, function(err, client, done) {
+
+    // send topic create result to user
+    topicCreate(client, title, body, parent_room, owner, attrs, logger, function(resp){
+
+      logger.debug('Sending ->', resp);
+      return res.json(resp);
+
+    });
+
+  });
+});
+
+// message history api
+// TODO: check token before proceeding !!!
+router.post('/rooms/:room_id/topics/:topic_id/history', function(req, res) {
+
+  var user_id = req.body.user_id;
+  var room_id = req.params.room_id;
+  var topic_id = req.params.topic_id;
+  var from = req.body.from;
+  var size = req.body.size;
+
+  logger.debug('user_id', user_id);
+  logger.debug('room_id', room_id);
+  logger.debug('topic_id', topic_id);
+  logger.debug('from', from);
+  logger.debug('size', size);
+
+  pg.connect(pgConnectionString, function(err, client, done) {
+
+    // send topic create result to user
+    messageHistory(client, user_id, topic_id, from, size, logger, function(resp){
+
+      logger.debug('Sending ->', resp);
+      return res.json(resp);
+
+    });
+
+  });
+});
+
+app.use('/', router);
+
+server.listen(port, host, function () {
+  logger.info('Server listening at %s:%d', host, port);
+});
