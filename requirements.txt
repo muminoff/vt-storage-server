@@ -1,5 +1,7 @@
-Flask
-boto3
-flask-swagger
-raven==5.10.1
 blinker==1.4
+boto3==1.2.3
+Flask==0.10.1
+flask-swagger==0.2.11
+gunicorn==19.4.5
+raven==5.10.1
+supervisor==3.2.0
