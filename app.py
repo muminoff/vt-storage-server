@@ -4,10 +4,12 @@ import config as cfg
 import boto3, os, time
 from boto3.s3.transfer import S3Transfer
 from flask_swagger import swagger
+from raven.contrib.flask import Sentry
 
 AWS_BUCKET = "vt-storage"
 app = Flask("vt-storage-server")
 app.debug = True
+sentry = Sentry(app, dsn='http://9f16b64768784341b02255f80ad15603:5da9deb5fec44c16a692bfeca23d0385@sentry.drivers.uz/2')
 
 # upload image api
 @app.route("/upload", methods=['POST'])
@@ -36,15 +38,16 @@ def upload():
         500:
             description: Server Internal error
     """
-    uploaded_files = request.files.getlist("files")
-    print uploaded_files
+    try:
+        uploaded_files = request.files.getlist("files")
+    except:
+        sentrycaptureException()
     
     for upload_file in uploaded_files:
-        print upload_file
         if upload_file and allowed_file(upload_file.filename):
             filename = secure_filename(str(time.time()) + upload_file.filename)
 
-            dir_name = 'uploads/'
+            dir_name = 'chat/'
             if not os.path.exists(dir_name):
                 os.makedirs(dir_name)
 
