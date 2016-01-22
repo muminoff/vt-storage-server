@@ -1,3 +1,4 @@
 Flask
 boto3
 flask-swagger
+raven==5.10.1
