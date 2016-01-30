@@ -40,28 +40,29 @@ def upload():
     """
     try:
         uploaded_files = request.files.getlist("files")
-    except:
-        sentrycaptureException()
     
-    for upload_file in uploaded_files:
-        if upload_file and allowed_file(upload_file.filename):
-            filename = secure_filename(str(time.time()) + upload_file.filename)
+        for upload_file in uploaded_files:
+            if upload_file and allowed_file(upload_file.filename):
+                filename = secure_filename(str(time.time()) + upload_file.filename)
+    
+                dir_name = 'chat/'
+                if not os.path.exists(dir_name):
+                    os.makedirs(dir_name)
+    
+                file_path = os.path.join(dir_name, filename)
+    
+                app.logger.info("Saving file: %s", file_path)
+                # save to local 
+                upload_file.save(file_path)
+                transfer = S3Transfer(boto3.client('s3', cfg.AWS_REGION, aws_access_key_id=cfg.AWS_APP_ID,
+                    aws_secret_access_key=cfg.AWS_APP_SECRET))
+    
+                transfer.upload_file(file_path, AWS_BUCKET, file_path)
+    
+        return jsonify({'success': 1})
 
-            dir_name = 'chat/'
-            if not os.path.exists(dir_name):
-                os.makedirs(dir_name)
-
-            file_path = os.path.join(dir_name, filename)
-
-            app.logger.info("Saving file: %s", file_path)
-            # save to local 
-            upload_file.save(file_path)
-            transfer = S3Transfer(boto3.client('s3', cfg.AWS_REGION, aws_access_key_id=cfg.AWS_APP_ID,
-                aws_secret_access_key=cfg.AWS_APP_SECRET))
-
-            transfer.upload_file(file_path, AWS_BUCKET, file_path)
-
-    return jsonify({'success': 1})
+    except:
+        sentry.captureException()
 
 # down load image
 @app.route("/download/<image>", methods=['GET'])
@@ -101,4 +102,4 @@ def allowed_file(filename):
        filename.rsplit('.', 1)[1] in cfg.ALLOWED_EXTENSIONS
 
 if (__name__ == "__main__" ):
-    app.run('0.0.0.0')
+    app.run('127.0.0.1')
