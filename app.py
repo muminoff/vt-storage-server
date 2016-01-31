@@ -5,12 +5,10 @@ import boto3, os, time
 from boto3.s3.transfer import S3Transfer
 from uuid import uuid1
 from flask_swagger import swagger
-from raven.contrib.flask import Sentry
 
 AWS_BUCKET = "vt-storage"
 app = Flask("vt-storage-server")
 app.debug = True
-sentry = Sentry(app, dsn='http://9f16b64768784341b02255f80ad15603:5da9deb5fec44c16a692bfeca23d0385@sentry.drivers.uz/2')
 
 # upload image api
 @app.route("/upload", methods=['POST'])
@@ -39,38 +37,38 @@ def upload():
         500:
             description: Server Internal error
     """
-    try:
-        upload_file = request.files.get("file")
-        print get_file_extension(upload_file.filename)
-        
-        if upload_file and get_file_extension(upload_file.filename):
-            filename = secure_filename(str(uuid1()).replace('-', '') + '.' + get_file_extension(upload_file.filename))
-        
-            dir_name = 'chat/'
-            if not os.path.exists(dir_name):
-                os.makedirs(dir_name)
-        
-            file_path = os.path.join(dir_name, filename)
-        
-            app.logger.info("Saving file: %s", file_path)
-            # save to local 
-            upload_file.save(file_path)
-            transfer = S3Transfer(boto3.client('s3', cfg.AWS_REGION, aws_access_key_id=cfg.AWS_APP_ID,
-                aws_secret_access_key=cfg.AWS_APP_SECRET))
-        
-            transfer.upload_file(file_path, AWS_BUCKET, file_path)
-            if os.path.exists(file_path):
-                os.remove(file_path)
+    upload_file = request.files.get("file")
+    print "Request files ->", request.files
+    print "File ->", upload_file
+    print "File extension -> ", get_file_extension(upload_file.filename)
+    
+    if upload_file and get_file_extension(upload_file.filename):
+        filename = secure_filename(str(uuid1()).replace('-', '') + '.' + get_file_extension(upload_file.filename))
+    
+        dir_name = 'chat/'
+        if not os.path.exists(dir_name):
+            os.makedirs(dir_name)
+    
+        file_path = os.path.join(dir_name, filename)
+    
+        app.logger.info("Saving file: %s", file_path)
+        # save to local 
+        upload_file.save(file_path)
+        transfer = S3Transfer(boto3.client('s3', cfg.AWS_REGION, aws_access_key_id=cfg.AWS_APP_ID,
+            aws_secret_access_key=cfg.AWS_APP_SECRET))
+    
+        transfer.upload_file(file_path, AWS_BUCKET, file_path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
-            bc = boto3.client('s3', cfg.AWS_REGION, aws_access_key_id=cfg.AWS_APP_ID, aws_secret_access_key=cfg.AWS_APP_SECRET)
-            # download_url = '{}/{}/{}'.format(bc.meta.endpoint_url, AWS_BUCKET, file_path)
-            download_url = 'http://storage.drivers.uz/download/{}'.format(filename)
-        
-            return jsonify({'status': 'ok', 'url': download_url})
-        else:
-            return jsonify({'status': 'fail', 'detail': 'File cannot be read server'})
-    except:
-        sentry.captureException()
+        bc = boto3.client('s3', cfg.AWS_REGION, aws_access_key_id=cfg.AWS_APP_ID, aws_secret_access_key=cfg.AWS_APP_SECRET)
+        download_url = '{}/{}/{}'.format(bc.meta.endpoint_url, AWS_BUCKET, file_path)
+        print "Returning download url", download_url
+        # download_url = 'http://storage.drivers.uz/download/{}'.format(filename)
+    
+        return jsonify({'status': 'ok', 'url': download_url})
+    else:
+        return jsonify({'status': 'fail', 'detail': 'File cannot be read server'})
 
 # down load image
 @app.route("/download/<filename>", methods=['GET'])
