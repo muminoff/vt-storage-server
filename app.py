@@ -5,6 +5,9 @@ import boto3, os, time
 from boto3.s3.transfer import S3Transfer
 from uuid import uuid1
 from flask_swagger import swagger
+import os, glob
+import threading
+from PIL import Image
 
 AWS_BUCKET = "vt-storage"
 app = Flask("vt-storage-server")
@@ -38,12 +41,13 @@ def upload():
             description: Server Internal error
     """
     upload_file = request.files.get("file")
+    upload_fileext = get_file_extension(upload_file.filename)
     print "Request files ->", request.files
     print "File ->", upload_file
-    print "File extension -> ", get_file_extension(upload_file.filename)
+    print "File extension -> ", upload_fileext
     
-    if upload_file and get_file_extension(upload_file.filename):
-        filename = secure_filename(str(uuid1()).replace('-', '') + '.' + get_file_extension(upload_file.filename))
+    if upload_file and upload_fileext:
+        filename = secure_filename(str(uuid1()).replace('-', '') + '.' + upload_fileext)
     
         dir_name = 'chat/'
         if not os.path.exists(dir_name):
@@ -54,9 +58,16 @@ def upload():
         app.logger.info("Saving file: %s", file_path)
         # save to local 
         upload_file.save(file_path)
+        
+        # Create thumbnail first
+        if upload_fileext in ['jpg', 'jpeg', 'png']:
+            thread = threading.Thread(target=make_thumbnail, args=(file_path,))
+            thread.start()
+
         transfer = S3Transfer(boto3.client('s3', cfg.AWS_REGION, aws_access_key_id=cfg.AWS_APP_ID,
             aws_secret_access_key=cfg.AWS_APP_SECRET))
     
+        # Upload to S3
         transfer.upload_file(file_path, AWS_BUCKET, file_path)
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -86,6 +97,26 @@ def download(filename):
         return send_file(UPLOAD_DIR + "/" + key)
     except:
         sentry.captureException()
+
+def make_thumbnail(file_path):
+    size = 64, 64
+    download_url = ''
+    codec = 'jpeg'
+    for infile in glob.glob(file_path):
+        file, ext = os.path.splitext(infile)
+        app.logger.info("Creating thumbnail for %s", file_path)
+        im = Image.open(file_path)
+        im.thumbnail(size)
+        thumb_file_path = file + "_thumb" + ext
+        if ext in ['jpeg', 'jpg']:
+            codec = 'jpeg'
+        elif ext == 'png':
+            codec = 'png'
+
+	im.save(thumb_file_path, codec)
+        transfer = S3Transfer(boto3.client('s3', cfg.AWS_REGION, aws_access_key_id=cfg.AWS_APP_ID,
+            aws_secret_access_key=cfg.AWS_APP_SECRET))
+        transfer.upload_file(thumb_file_path, AWS_BUCKET, thumb_file_path)
 
 # Swagger Doccument for API
 @app.route('/docs')
